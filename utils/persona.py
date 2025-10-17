@@ -106,12 +106,14 @@ class PersonaSpec:
     def generate_biography(self, seed: Optional[int] = None) -> str:
         """
         Randomly samples values from provided specs (skipping None)
-        and returns a single biography string.
+        and returns a single biography string and a dictionary containing 
+        values.
         """
         rng = random.Random(seed)
 
         # Walk through nested specs and sample values
         parts = []
+        values = {}
 
         def add_sentence(path: str, value_key: str, spec: RangeOrOptions, postprocess=None):
             sampled = _sample_from(spec, rng)
@@ -130,6 +132,7 @@ class PersonaSpec:
             template = self._templates.get(path)
             if template:
                 parts.append(template.format(**{value_key: sampled_value}))
+                values[value_key] = sampled_value
 
         # Demographic
         add_sentence("demographic.age", "age", self.demographic.age)
@@ -169,7 +172,7 @@ class PersonaSpec:
         add_sentence("technographic.tech_adoption", "tech_adoption", self.technographic.tech_adoption)
 
         # Join into a single, readable paragraph
-        return " ".join(parts)
+        return " ".join(parts), values
 
 
 # -------------------------

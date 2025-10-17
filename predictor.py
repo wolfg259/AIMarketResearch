@@ -18,9 +18,12 @@ class IntentPredictor:
 		self.question_categories = question_categories
 		self.response_model = response_model
 		self.response_filename = response_filename
+		
 		self.qc_str = ', '.join(self.question_categories)
+		
+		self.responses = dict()
+		
 		self.client=OpenAI()
-		self.responses = list()
 
 		os.makedirs('responses', exist_ok=True)
 
@@ -47,27 +50,17 @@ class IntentPredictor:
 			import pdb; pdb.set_trace()
 
 		print(f'{datetime.now()} INTERVIEWING PERSONAS')
-		#for respondent_idx in tqdm(range(sample_size)):
-		for respondent_idx in tqdm(range(1)): # TODO make concurrent
-
-			# Make a current persona
-			respondent_bio = persona.generate_biography()
-			if clean_biography:
-				respondent_bio = self.client.responses.create(
-					model='gpt-5-nano',
-					input=f'Turn the following biography into a more complete biography, worded in second person as someone to impersonate (You are impersonating...). Optimise the text to function as a system prompt for an llm, such that the llm will behave as closely as possible to a person with the given bio. As output, provide only the raw system prompt. Bio:\n{respondent_bio}'
-				).output_text
-				
-			# Perform questionnaire on persona
-			persona_answers = self.perform_questionnaire(
-				biography=respondent_bio,
-				product=concept_to_predict,
-				questionnaire=questionnaire
+		for respondent_idx in tqdm(range(sample_size)): # TODO make concurrent
+			# Make and 'interview' persona
+			respondent_bio, respondent_demographics, persona_answers = self._make_and_interview(
+				persona,
+				questionnaire, 
+				clean_biography
 			)
-
-			self.responses.append(
+			self.responses[respondent_idx] = (
 				{
 					'biography': respondent_bio,
+					'demographics': respondent_demographics,
 					'responses': persona_answers
 				}
 			)
@@ -82,15 +75,39 @@ class IntentPredictor:
 		print(f'{datetime.now()} SAVING RESEARCH OUTCOMES AT {os.path.join('responses', self.response_filename)}')
 		with open(os.path.join('responses', self.response_filename), 'w') as f:
 			json.dump(mr, f, indent=4, ensure_ascii=True)
+
+		# Perform quantitative analysis
 			
 		import pdb; pdb.set_trace()
 
-	def perform_questionnaire(
+	def _make_and_interview(
+			self, 
+			persona: PersonaSpec, 
+			questionnaire: str, 
+			clean_biography: bool
+		):
+		# Make a current persona
+		respondent_bio, respondent_demographics = persona.generate_biography()
+		if clean_biography:
+			respondent_bio = self.client.responses.create(
+				model='gpt-5-nano',
+				input=f'Turn the following biography into a more complete biography, worded in second person as someone to impersonate (You are impersonating...). Optimise the text to function as a system prompt for an llm, such that the llm will behave as closely as possible to a person with the given bio. As output, provide only the raw system prompt. Bio:\n{respondent_bio}'
+			).output_text
+			
+		# Perform questionnaire on persona
+		persona_answers = self._perform_questionnaire(
+			biography=respondent_bio,
+			product=concept_to_predict,
+			questionnaire=questionnaire
+		)
+
+		return respondent_bio, respondent_demographics, persona_answers
+
+	def _perform_questionnaire(
 			self, 
 			biography: str, 
 			product: str, 
 			questionnaire: str
-			#questions: list[str] # TODO compare performance on a per question basis
 		):
 		messages = [
 			{"role": "system", "content": f'{biography}'},
@@ -113,7 +130,7 @@ class IntentPredictor:
 if __name__ == '__main__':
 	load_dotenv()
 	
-	concept_to_predict = "A drink that functions as a meal; It contains a similar amount of calories as a regular meal (400-500), added nutrients and vitamins and about 20-30 grams of protein. It is priced at €3.50."
+	concept_to_predict = "A drink that functions as a meal; It contains a similar amount of calories as a regular meal (400-500), added nutrients and vitamins and about 20-30 grams of protein. It is priced at €30.50."
 	persona = PersonaSpec(
         demographic=Demographic(
             age=[18, 35],
@@ -142,5 +159,6 @@ if __name__ == '__main__':
 	ip = IntentPredictor()
 	ip.predict(
 		concept_to_predict=concept_to_predict, 
-		persona=persona
+		persona=persona,
+		sample_size=1
 	)
